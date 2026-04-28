@@ -275,7 +275,7 @@ async def root(request: Request):
 
 if __name__ == "__main__":
     try:
-        uvicorn.run(app, port=3090)
+        uvicorn.run(app, port=3090) #post(webhook) port 机器人接受到消息后用于推送事件的接口
     finally:
         with open('data.json', 'w', encoding='utf-8') as f: #save total number of images when closing 程序关闭时保存图片数
             json.dump(pages, f, indent=4)
