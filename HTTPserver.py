@@ -169,13 +169,14 @@ async def calculator(group_id,msg):
     msg = msg.replace('mod','%')
     msg = msg.replace('ln','log')
     msg = re.sub(r'(\))([a-z\(])',r'\1*\2',msg) # sin(pi)cos(pi)(1+2) -> sin(pi)*cos(pi)*(1+2)
-    msg = re.sub(r'(?<![a-z0-9])(\d+)([a-z\(])',r'\1*\2',msg) # 10(1+2sin(pi)) -> 10*(1+2*sin(pi))
+    msg = re.sub(r'(?<![a-z0-9])(\d+e?\d*)([a-z\(])',r'\1*\2',msg) # 10(1+2sin(pi)) -> 10*(1+2*sin(pi))
     msg = msg.replace('lg','log10')
-    msg = re.sub(r'(?<=[a-z0-9\(\)]) (?=[a-z0-9\(\)])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
+    msg = re.sub(r'(?<=[a-z0-9\)])\s+(?=[a-z0-9\(])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
     msg = re.sub(r'(?<![a-z])i',r'j',msg)
     msg = re.sub(r'(?<![a-z0-9])j',r'1j',msg)
     msg = re.sub(r'(?<![A-Za-z0-9])([a-z]+)',r'np.\1',msg) # pi -> np.pi
     msg = re.sub(r'\*?(np\.)?(and|or|not)\*?',r' \2 ',msg) # np.and -> and
+    msg = re.sub(r'\*np\.(e\d+)',r'\1',msg) # 5*np.e2 -> 5e2
     print(msg)
     try:
         result = eval(msg)
@@ -202,11 +203,11 @@ async def algebra(group_id,msg,det):
     msg = msg.strip()
     msg = msg.replace('^','**')
     msg = re.sub(r'(\))([a-z\(])',r'\1*\2',msg) # sin(pi)cos(pi)(1+2) -> sin(pi)*cos(pi)*(1+2)
-    msg = re.sub(r'(?<![a-z0-9])(\d+)([a-z\(])',r'\1*\2',msg) # 10(1+2sin(pi)) -> 10*(1+2*sin(pi))
-    msg = re.sub(r'(?<=[a-z0-9\(\)]) (?=[a-z0-9\(\)])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
+    msg = re.sub(r'(?<![a-z0-9])(\d+e?\d*)([a-z\(])',r'\1*\2',msg) # 10(1+2sin(pi)) -> 10*(1+2*sin(pi))
+    msg = re.sub(r'(?<=[a-z0-9\)])\s+(?=[a-z0-9\(])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
     msg = re.sub(r'log(\d+)\((.*)\)',r'log(\2,\1)',msg) # log2(x) -> log(x,2)
     msg = re.sub(r'lg\((.*)\)',r'log(\1,10)',msg) # lg(x) -> log(x,10)
-    msg = re.sub(r'(?<![a-z])(i|e)(?![a-z])',lambda m: m.group(1).upper(),msg) # i/e -> I/E
+    msg = re.sub(r'(?<![a-z0-9])(i|e)(?![a-z0-9])',lambda m: m.group(1).upper(),msg) # i/e -> I/E
     print(msg)
     try:
         match det:
@@ -244,6 +245,51 @@ async def algebra(group_id,msg,det):
         response = await send_txtimg(group_id,txt='运算错误，请重新输入')
 
 
+async def calculus(group_id,msg,det):
+    """solve calculus problems 解决微积分问题"""
+    msg = msg.strip()
+    msg = msg.replace('^','**')
+    msg = re.sub(r'(\))([a-z\(])',r'\1*\2',msg) # sin(pi)cos(pi)(1+2) -> sin(pi)*cos(pi)*(1+2)
+    msg = re.sub(r'(?<![a-z0-9])(\d+e?\d*)([a-z\(])',r'\1*\2',msg) # 10(1+2sin(pi)) -> 10*(1+2*sin(pi))
+    msg = re.sub(r'(?<=[a-z0-9\)])\s+(?=[a-z0-9\(])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
+    msg = re.sub(r'log(\d+)\((.*)\)',r'log(\2,\1)',msg) # log2(x) -> log(x,2)
+    msg = re.sub(r'lg\((.*)\)',r'log(\1,10)',msg) # lg(x) -> log(x,10)
+    msg = re.sub(r'(?<![a-z0-9])(i|e)(?![a-z0-9])',lambda m: m.group(1).upper(),msg) # i/e -> I/E
+    print(msg)
+    try:
+        match det:
+            case '极限': #input format: expr,var,val+/-  输入格式为 表达式,变量,值+/-
+                arg = msg.split(',')
+                arg[-1] = arg[-1].replace('inf','oo')
+                if arg[-1][-1] == '+' or arg[-1][-1] == '-':
+                    result = sp.Limit(*arg[:-1],arg[-1][:-1],dir=arg[-1][-1]).doit()
+                else:
+                    result = sp.Limit(*arg).doit()
+            case '求导': #input format: expr,var,order 输入格式为 表达式,变量=值,次数
+                arg = msg.split(',')
+                if '=' in arg[1]:
+                    arg[1] = arg[1].replace('inf','oo').split('=')
+                    value = {arg[1][0]:arg[1][1]}
+                    arg[1] = arg[1][0]
+                    result = sp.Derivative(*arg).doit().subs(value)
+                else:
+                    result = sp.Derivative(*arg).doit()
+            case '积分':
+                arg = msg.split(',')
+                if len(arg) == 2: #input format: expr,var 输入格式为 表达式,变量
+                    result = sp.Integral(arg[0],sp.Symbol(arg[1])).doit()
+                else: #input format: expr,var,lower_limit,upper_limit 输入格式为 表达式,变量,上界,下界
+                    arg[-2] = arg[-2].replace('inf','oo')
+                    arg[-1] = arg[-1].replace('inf','oo')
+                    result = sp.Integral(arg[0],tuple(arg[1:])).doit()
+            case _:
+                response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
+                return
+        response = await send_txtimg(group_id,txt=f'结果为{result}')
+    except:
+        response = await send_txtimg(group_id,txt='运算错误，请重新输入')
+
+
 @app.post("/")
 async def root(request: Request):
     data = await request.json()  #get events 获取事件数据
@@ -263,12 +309,18 @@ async def root(request: Request):
                 msg = msg.replace('计算','')
                 await calculator(data['group_id'],msg)
                 return '数值计算'
-            search = re.search(r'(化简|分解|解方程|代入)',msg)
+            search = re.search(r'(化简|分解|解方程|代入|展开)',msg)
             if search:
                 det = search.group()
                 msg = msg.replace(det,'')
                 await algebra(data['group_id'],msg,det)
                 return '代数运算'
+            search = re.search(r'(极限|求导|积分)',msg)
+            if search:
+                det = search.group()
+                msg = msg.replace(det,'')
+                await calculus(data['group_id'],msg,det)
+                return '微积分运算'
     return {}
 
 
