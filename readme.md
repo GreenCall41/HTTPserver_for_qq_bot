@@ -13,13 +13,13 @@ Everything is written in python 3.12. You can refer to `packages.txt` to find ou
 # User's guide 项目安装步骤
 
 1. Download and install llbot by following the [instructions](https://luckylillia.com/guide/choice_install).
-1. 根据[教程](https://luckylillia.com/guide/choice_install)下载并安装llbot。
+   根据[教程](https://luckylillia.com/guide/choice_install)下载并安装llbot。
 2. After the first successful login via llbot, configure the bot by following the [instructions](https://luckylillia.com/guide/config). The most important configurations are those for the http server port (default 3000) and webhook port (default 3090). If you want to change the default port numbers, you need to change the server code. The bot will first post events via webhook, and the server will receive them and do something (get or post) via the http server port.
-2. 在第一次用llbot成功登录后，根据[教程](https://luckylillia.com/guide/config)配置机器人，其中关于http服务端接口（默认3000）和webhook接口（默认3090）的配置尤为重要。如果想要更改默认的接口码，则需要在该项目代码的相应部分同时进行修改。机器人会先通过webhook推送在群中检测到的事件，然后服务端会接收这些事件并通过http接口进行相应的操作。
+   在第一次用llbot成功登录后，根据[教程](https://luckylillia.com/guide/config)配置机器人，其中关于http服务端接口（默认3000）和webhook接口（默认3090）的配置尤为重要。如果想要更改默认的接口码，则需要在该项目代码的相应部分同时进行修改。机器人会先通过webhook推送在群中检测到的事件，然后服务端会接收这些事件并通过http接口进行相应的操作。
 3. Add `self.json` with the bot's qq id specified as a python string in it.
-3. 添加`self.json`文件并在里面以python字符串的形式写明机器人的qq号。
+   添加`self.json`文件并在里面以python字符串的形式写明机器人的qq号。
 4. Run both the llbot and the server code.
-4. 同时运行llbot机器人和服务端代码。
+   同时运行llbot机器人和服务端代码。
 
 # More info 更多信息
 
