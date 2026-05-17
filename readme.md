@@ -1,8 +1,8 @@
 # Intro 简介
 
-This project is a HTTP server code for qq bots based on [llonebot](https://luckylillia.com/). Currently the server can scrapy pony images, do numerical calculations, and solve simple algebra and calculus problems depending on what key words a user gives to the bot. More utilities and functions are to be developed. In theory, the code can be slightly modified to support other bots that can communicate with http protocols such as [NapCat](https://napneko.github.io/).
+This project is a HTTP server code for qq bots based on [llonebot](https://luckylillia.com/). Currently the server can scrapy pony images, do numerical calculations, solve simple math problems, and make plots depending on what key words a user gives to the bot. More utilities and functions are to be developed. In theory, the code can be slightly modified to support other bots that can communicate with http protocols such as [NapCat](https://napneko.github.io/).
 
-此项目为基于[llonebot](https://luckylillia.com/)的qq机器人服务端代码。目前该服务端可以根据用户提供的关键词进行小马图片抓取、数值计算以及求解简单的代数和微积分问题。更多的功能将在后期相继开发。理论上来说，只需要通过一些简单的修改就可以让此代码适配其他可以用http协议交互的机器人（例如[NapCat](https://napneko.github.io/)）。
+此项目为基于[llonebot](https://luckylillia.com/)的qq机器人服务端代码。目前该服务端可以根据用户提供的关键词进行小马图片抓取、数值计算、求解简单的数学问题以及绘制图像。更多的功能将在后期相继开发。理论上来说，只需要通过一些简单的修改就可以让此代码适配其他可以用http协议交互的机器人（例如[NapCat](https://napneko.github.io/)）。
 
 # Environment 运行环境
 
@@ -18,7 +18,9 @@ Everything is written in python 3.12. You can refer to `packages.txt` to find ou
    在第一次用llbot成功登录后，根据[教程](https://luckylillia.com/guide/config)配置机器人，其中关于http服务端接口（默认3000）和webhook接口（默认3090）的配置尤为重要。如果想要更改默认的接口码，则需要在该项目代码的相应部分同时进行修改。机器人会先通过webhook推送在群中检测到的事件，然后服务端会接收这些事件并通过http接口进行相应的操作。
 3. Add `self.json` with the bot's qq id specified as a python string in it.
    添加`self.json`文件并在里面以python字符串的形式写明机器人的qq号。
-4. Run both the llbot and the server code.
+4. Add `path.json` with the server path specified as a python string as `"file:\\[absolute path]"` in it.
+   添加`path.json`文件并在里面以python字符串的形式写明服务端所在路径，格式为`"file:\\[绝对路径]"`。
+5. Run both the llbot and the server code.
    同时运行llbot机器人和服务端代码。
 
 # More info 更多信息

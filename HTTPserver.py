@@ -2,6 +2,7 @@ import uvicorn, requests, json, random, httpx, asyncio, urllib, re
 import numpy as np
 import sympy as sp
 from fastapi import FastAPI, Request
+import matplotlib.pyplot as plt
 
 app = FastAPI()
 url = "http://127.0.0.1:3000/" #server port 服务器接口默认3000
@@ -57,6 +58,10 @@ with open('data.json','r') as file:
 #load bot id 加载机器人自己的qq号 这里没有做git需要自己添加self.json文件 数据格式为字符串
 with open('self.json','r') as file:
     self_id = json.load(file)
+
+#load local server path in the form 'file://[absolute path]' 加载本地服务端路径 格式为'file://[绝对路径]'
+with open('path.json','r') as file:
+    local = json.load(file)
 
 async def send_txtimg(group_id, txt='', img=''):
     """send text in str or image in url or file path 发送文字或图片 图片为链接或文件路径格式"""
@@ -161,8 +166,8 @@ async def pony_img(group_id,msg):
     await scrape_img(group_id, url, page, save)
 
 
-async def calculator(group_id,msg):
-    """do numerical calculations 做数值计算"""
+def tonp(msg):
+    """convert expressions into valid numpy codes 把表达式转换为numpy语言"""
     msg = msg.strip()
     msg = msg.replace('^','**')
     msg = re.sub(r'(true|false)',lambda m: m.group(0).title(),msg) # true/false -> True/False
@@ -174,9 +179,15 @@ async def calculator(group_id,msg):
     msg = re.sub(r'(?<=[a-z0-9\)])\s+(?=[a-z0-9\(])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
     msg = re.sub(r'(?<![a-z])i',r'j',msg)
     msg = re.sub(r'(?<![a-z0-9])j',r'1j',msg)
-    msg = re.sub(r'(?<![A-Za-z0-9])([a-z]+)',r'np.\1',msg) # pi -> np.pi
+    msg = re.sub(r'(?<![A-Za-z0-9])([a-z\.]+)',r'np.\1',msg) # pi -> np.pi
     msg = re.sub(r'\*?(np\.)?(and|or|not)\*?',r' \2 ',msg) # np.and -> and
     msg = re.sub(r'\*np\.(e\d+)',r'\1',msg) # 5*np.e2 -> 5e2
+    return msg
+
+
+async def calculator(group_id,msg):
+    """do numerical calculations 做数值计算"""
+    msg = tonp(msg)
     print(msg)
     try:
         result = eval(msg)
@@ -198,8 +209,8 @@ async def calculator(group_id,msg):
         response = await send_txtimg(group_id,txt=f'结果为{result}')
 
 
-async def algebra(group_id,msg,det):
-    """solve algebra problems 解决代数问题"""
+def tosp(msg):
+    """convert expressions into valid sympy codes 把表达式转换为sympy语言"""
     msg = msg.strip()
     msg = msg.replace('^','**')
     msg = re.sub(r'(\))([a-z\(])',r'\1*\2',msg) # sin(pi)cos(pi)(1+2) -> sin(pi)*cos(pi)*(1+2)
@@ -208,6 +219,12 @@ async def algebra(group_id,msg,det):
     msg = re.sub(r'log(\d+)\((.*)\)',r'log(\2,\1)',msg) # log2(x) -> log(x,2)
     msg = re.sub(r'lg\((.*)\)',r'log(\1,10)',msg) # lg(x) -> log(x,10)
     msg = re.sub(r'(?<![a-z0-9])(i|e)(?![a-z0-9])',lambda m: m.group(1).upper(),msg) # i/e -> I/E
+    return msg
+
+
+async def algebra(group_id,msg,det):
+    """solve algebra problems 解决代数问题"""
+    msg = tosp(msg)
     print(msg)
     try:
         match det:
@@ -247,18 +264,11 @@ async def algebra(group_id,msg,det):
 
 async def calculus(group_id,msg,det):
     """solve calculus problems 解决微积分问题"""
-    msg = msg.strip()
-    msg = msg.replace('^','**')
-    msg = re.sub(r'(\))([a-z\(])',r'\1*\2',msg) # sin(pi)cos(pi)(1+2) -> sin(pi)*cos(pi)*(1+2)
-    msg = re.sub(r'(?<![a-z0-9])(\d+e?\d*)([a-z\(])',r'\1*\2',msg) # 10(1+2sin(pi)) -> 10*(1+2*sin(pi))
-    msg = re.sub(r'(?<=[a-z0-9\)])\s+(?=[a-z0-9\(])',r'*',msg) # 2 x (x+y) (y-x) -> 2*x*(x+y)*(y-x)
-    msg = re.sub(r'log(\d+)\((.*)\)',r'log(\2,\1)',msg) # log2(x) -> log(x,2)
-    msg = re.sub(r'lg\((.*)\)',r'log(\1,10)',msg) # lg(x) -> log(x,10)
-    msg = re.sub(r'(?<![a-z0-9])(i|e)(?![a-z0-9])',lambda m: m.group(1).upper(),msg) # i/e -> I/E
+    msg = tosp(msg)
     print(msg)
     try:
         match det:
-            case '极限': #input format: expr,var,val+/-  输入格式为 表达式,变量,值+/-
+            case '极限': #input format: expr,var,val+/-  输入格式为 表达式,变量,值[+/-]
                 arg = msg.split(',')
                 arg[-1] = arg[-1].replace('inf','oo')
                 if arg[-1][-1] == '+' or arg[-1][-1] == '-':
@@ -290,6 +300,53 @@ async def calculus(group_id,msg,det):
         response = await send_txtimg(group_id,txt='运算错误，请重新输入')
 
 
+async def plot(group_id,msg,det):
+    """make plots of functions 给函数画图像
+    input format: [plt function1:]arg1,arg2,...;[plt function2:]arg1,arg2,...;...
+    输入格式为 [plt函数1:]参数1,参数2,...;[plt函数2:]参数1,参数2,...;..."""
+    msg = msg.strip()
+    msg = re.sub(r'(true|false)',lambda m: m.group(0).title(),msg)
+    arg = re.split(r';\s*',msg)
+    code = 'plt.clf()\n'
+    try:
+        for i in range(len(arg)):
+            if ':' not in arg[i]: #when no function name is provided, the default function is assumed based on det
+                #如未提供函数名 则默认为det决定的函数
+                match det:
+                    case '图':
+                        if arg[i][0] == '[': #when arguments are a list of x and y coordinantes 参数为含有x和y坐标的列表
+                            code += 'plt.plot(' + arg[i] + ')\n'
+                        else: #when arguments are in the form of 
+                            #expression,var,domain_lower_bound,domain_upper_bound[,num_points][,more_settings]
+                            #参数形式为 表达式,自变量,定义域下界,定义域上界[,点数量][,更多设置]
+                            kw = arg[i].split(',')
+                            if len(kw) < 5 or not re.search(r'\d',kw[4]) or '=' not in kw[4]:
+                                kw.insert(4,'100')
+                            var = f'linspace({kw[2]},{kw[3]},{kw[4]})'
+                            kw[0] = tonp(kw[0].replace(kw[1],var))
+                            code += 'plt.plot(' + tonp(var) + ',' + kw[0]
+                            if len(kw) > 5:
+                                code += ','.join(kw[5:])
+                            code += ')\n'
+                    case _:
+                        response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
+                        return
+            else: #when function name is provided, call the function directly 如提供函数名 则直接调用该函数
+                arg[i] = arg[i].replace(':','(')
+                if 'figure' in arg[i]: #configuration of the figure should be placed in the first place
+                    #关于图像figure的设定函数必须优先调用
+                    code = 'plt.' + arg[i] + ')\n' + code
+                else:
+                    code += 'plt.' + arg[i] + ')\n'
+        if 'label' in msg and 'legend' not in msg:
+            code += 'plt.legend()\n'
+        print(code)
+        exec(code + "plt.savefig('plot.png')")
+        response = await send_txtimg(group_id,img=f'{local}/plot.png')
+    except:
+        response = await send_txtimg(group_id,txt='图像绘制失败，请重新输入')
+
+
 @app.post("/")
 async def root(request: Request):
     data = await request.json()  #get events 获取事件数据
@@ -299,8 +356,14 @@ async def root(request: Request):
     except KeyError:
         print('Key not Found!')
     else:
-        if message[0]['type'] == 'at' and message[0]['data']['qq'] == self_id: #when at 当被at时
+        if message[0]['type'] == 'at' and message[0]['data']['qq'] == self_id: #when being "at" 当被at时
             msg = message[-1]['data']['text'].lower()
+            if '画' in msg:
+                msg = msg.replace('画','')
+                det = re.search(r'^[^a-z0-9\(\[]+',msg).group().strip()
+                msg = msg.replace(det,'')
+                await plot(data['group_id'],msg,det)
+                return '绘制图像'
             if '图' in msg:
                 msg = msg.replace('图','')
                 await pony_img(data['group_id'],msg)

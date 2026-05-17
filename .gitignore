@@ -3,3 +3,5 @@ self.json
 .ipynb_checkpoints/
 .mario/
 test.ipynb
+path.json
+plot.png
