@@ -43,6 +43,9 @@ other_alias = [
 
 tags = ['ts','rd','pp','fs','rarity','aj','starlight+glimmer','sunset+shimmer','celestia','luna','cadance','spike']
 
+#determine if the output is in latex 决定是否以latex形式输出
+latex = True
+
 #make dict for alias search 创建同义词检索
 dictionary = {}
 for i in range(len(tags)):
@@ -222,7 +225,7 @@ def tosp(msg):
     return msg
 
 
-async def algebra(group_id,msg,det):
+async def algebra(group_id,msg,det,latex):
     """solve algebra problems 解决代数问题"""
     msg = tosp(msg)
     print(msg)
@@ -257,12 +260,18 @@ async def algebra(group_id,msg,det):
             case _:
                 response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
                 return
-        response = await send_txtimg(group_id,txt=f'结果为{result}')
+        if latex:
+            code = "plt.figure(figsize=(0.1,0.1))\nplt.clf()\nplt.axis('off')\n"
+            code += f"plt.text(0.5,0.5,r'${sp.latex(result)}$',size=20,ha='center',va='center')\n"
+            exec(code+"plt.savefig('plot.png',bbox_inches='tight',dpi=300)")
+            response = await send_txtimg(group_id,img=f'{local}/plot.png')
+        else:
+            response = await send_txtimg(group_id,txt=f'结果为{result}')
     except:
         response = await send_txtimg(group_id,txt='运算错误，请重新输入')
 
 
-async def calculus(group_id,msg,det):
+async def calculus(group_id,msg,det,latex):
     """solve calculus problems 解决微积分问题"""
     msg = tosp(msg)
     print(msg)
@@ -295,7 +304,13 @@ async def calculus(group_id,msg,det):
             case _:
                 response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
                 return
-        response = await send_txtimg(group_id,txt=f'结果为{result}')
+        if latex:
+            code = "plt.figure(figsize=(0.1,0.1))\nplt.clf()\nplt.axis('off')\n"
+            code += f"plt.text(0.5,0.5,r'${sp.latex(result)}$',size=20,ha='center',va='center')\n"
+            exec(code+"plt.savefig('plot.png',bbox_inches='tight',dpi=300)")
+            response = await send_txtimg(group_id,img=f'{local}/plot.png')
+        else:
+            response = await send_txtimg(group_id,txt=f'结果为{result}')
     except:
         response = await send_txtimg(group_id,txt='运算错误，请重新输入')
 
@@ -307,44 +322,69 @@ async def plot(group_id,msg,det):
     msg = msg.strip()
     msg = re.sub(r'(true|false)',lambda m: m.group(0).title(),msg)
     arg = re.split(r';\s*',msg)
-    code = 'plt.clf()\n'
-    try:
-        for i in range(len(arg)):
-            if ':' not in arg[i]: #when no function name is provided, the default function is assumed based on det
-                #如未提供函数名 则默认为det决定的函数
-                match det:
-                    case '图':
-                        if arg[i][0] == '[': #when arguments are a list of x and y coordinantes 参数为含有x和y坐标的列表
-                            code += 'plt.plot(' + arg[i] + ')\n'
-                        else: #when arguments are in the form of 
-                            #expression,var,domain_lower_bound,domain_upper_bound[,num_points][,more_settings]
-                            #参数形式为 表达式,自变量,定义域下界,定义域上界[,点数量][,更多设置]
-                            kw = arg[i].split(',')
-                            if len(kw) < 5 or not re.search(r'\d',kw[4]) or '=' not in kw[4]:
-                                kw.insert(4,'100')
-                            var = f'linspace({kw[2]},{kw[3]},{kw[4]})'
-                            kw[0] = tonp(kw[0].replace(kw[1],var))
-                            code += 'plt.plot(' + tonp(var) + ',' + kw[0]
-                            if len(kw) > 5:
-                                code += ','.join(kw[5:])
-                            code += ')\n'
-                    case _:
-                        response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
-                        return
-            else: #when function name is provided, call the function directly 如提供函数名 则直接调用该函数
-                arg[i] = arg[i].replace(':','(')
-                if 'figure' in arg[i]: #configuration of the figure should be placed in the first place
-                    #关于图像figure的设定函数必须优先调用
-                    code = 'plt.' + arg[i] + ')\n' + code
-                else:
-                    code += 'plt.' + arg[i] + ')\n'
-        if 'label' in msg and 'legend' not in msg:
-            code += 'plt.legend()\n'
-        print(code)
-        exec(code + "plt.savefig('plot.png')")
-        response = await send_txtimg(group_id,img=f'{local}/plot.png')
-    except:
-        response = await send_txtimg(group_id,txt='图像绘制失败，请重新输入')
+    match det:
+        case '图设置':
+            try:
+                code = ''
+                for i in range(len(arg)):
+                    code += re.sub(r'(.+):(.+)',r"plt.rcParams['\1']=\2",arg[i]) + '\n'
+                exec(code)
+                response = await send_txtimg(group_id,txt='图像设置成功')
+            except:
+                response = await send_txtimg(group_id,txt='图像设置失败，请重新输入')
+        case '图设置重置':
+            code = 'plt.rcdefaults()'
+            exec(code)
+            response = await send_txtimg(group_id,txt='图像设置重置成功')
+        case '图默认设置':
+            code = "plt.rcParams['font.family'] = 'serif'\n"
+            code += "plt.rcParams['font.serif'] = ['Times New Roman']\n"
+            code += "plt.rcParams['mathtext.fontset'] = 'cm'"
+            exec(code)
+            response = await send_txtimg(group_id,txt='图像默认设置成功')
+        case _:
+            try:
+                code = "plt.clf()\nplt.axis('on')\n"
+                for i in range(len(arg)):
+                    if ':' not in arg[i]: #when no function name is provided, the default function is assumed based on det
+                        #如未提供函数名 则默认为det决定的函数
+                        match det:
+                            case '图':
+                                if arg[i][0] == '[': #when arguments are a list of x and y coordinantes 参数为含有x和y坐标的列表
+                                    code += 'plt.plot(' + arg[i] + ')\n'
+                                else: #when arguments are in the form of 
+                                    #expression,var,domain_lower_bound,domain_upper_bound[,num_points][,more_settings]
+                                    #参数形式为 表达式,自变量,定义域下界,定义域上界[,点数量][,更多设置]
+                                    kw = arg[i].split(',')
+                                    if len(kw) < 5 or not re.search(r'\d',kw[4]) or '=' not in kw[4]:
+                                        kw.insert(4,'100')
+                                    var = f'linspace({kw[2]},{kw[3]},{kw[4]})'
+                                    kw[0] = tonp(kw[0].replace(kw[1],var))
+                                    code += 'plt.plot(' + tonp(var) + ',' + kw[0]
+                                    if len(kw) > 5:
+                                        code += ','.join(kw[5:])
+                                    code += ')\n'
+                            case '公式':
+                                code = code.replace('on','off')
+                                code = 'plt.figure(figsize=(0.1,0.1))\n' + code
+                                code += f"plt.text(0.5,0.5,r'${arg[0]}$',size=20,ha='center',va='center')\n"
+                            case _:
+                                response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
+                                return
+                    else: #when function name is provided, call the function directly 如提供函数名 则直接调用该函数
+                        arg[i] = arg[i].replace(':','(')
+                        if 'figure' in arg[i]: #configuration of the figure should be placed in the first place
+                            #关于图像figure的设定函数必须优先调用
+                            code = 'plt.' + arg[i] + ')\n' + code
+                        else:
+                            code += 'plt.' + arg[i] + ')\n'
+                if 'label' in msg and 'legend' not in msg:
+                    code += 'plt.legend()\n'
+                print(code)
+                exec(code + "plt.savefig('plot.png',bbox_inches='tight',dpi=300)")
+                response = await send_txtimg(group_id,img=f'{local}/plot.png')
+            except:
+                response = await send_txtimg(group_id,txt='图像绘制失败，请重新输入')
 
 
 @app.post("/")
@@ -357,10 +397,19 @@ async def root(request: Request):
         print('Key not Found!')
     else:
         if message[0]['type'] == 'at' and message[0]['data']['qq'] == self_id: #when being "at" 当被at时
+            global latex
             msg = message[-1]['data']['text'].lower()
+            if msg == 'latex':
+                latex = True
+                response = await send_txtimg(data['group_id'],txt='已设置为以latex形式输出')
+                return 'latex设置'
+            if msg == 'no latex':
+                latex = False
+                response = await send_txtimg(data['group_id'],txt='已设置为以纯文本形式输出')
+                return 'latex设置'
             if '画' in msg:
                 msg = msg.replace('画','')
-                det = re.search(r'^[^a-z0-9\(\[]+',msg).group().strip()
+                det = re.search(r'^[^a-z0-9\(\[\\]+',msg).group().strip()
                 msg = msg.replace(det,'')
                 await plot(data['group_id'],msg,det)
                 return '绘制图像'
@@ -376,19 +425,22 @@ async def root(request: Request):
             if search:
                 det = search.group()
                 msg = msg.replace(det,'')
-                await algebra(data['group_id'],msg,det)
+                await algebra(data['group_id'],msg,det,latex)
                 return '代数运算'
             search = re.search(r'(极限|求导|积分)',msg)
             if search:
                 det = search.group()
                 msg = msg.replace(det,'')
-                await calculus(data['group_id'],msg,det)
+                await calculus(data['group_id'],msg,det,latex)
                 return '微积分运算'
     return {}
 
 
 
 if __name__ == "__main__":
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Times New Roman']
+    plt.rcParams['mathtext.fontset'] = 'cm'
     try:
         uvicorn.run(app, port=3090) #post(webhook) port 机器人接受到消息后用于推送事件的接口
     finally:
