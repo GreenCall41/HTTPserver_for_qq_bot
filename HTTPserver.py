@@ -3,6 +3,8 @@ import numpy as np
 import sympy as sp
 from fastapi import FastAPI, Request
 import matplotlib.pyplot as plt
+from scrapling.fetchers import AsyncFetcher
+from scrapling.parser import Selector
 
 app = FastAPI()
 url = "http://127.0.0.1:3000/" #server port 服务器接口默认3000
@@ -263,7 +265,7 @@ async def algebra(group_id,msg,det,latex):
         if latex:
             code = "plt.figure(figsize=(0.1,0.1))\nplt.clf()\nplt.axis('off')\n"
             code += f"plt.text(0.5,0.5,r'${sp.latex(result)}$',size=20,ha='center',va='center')\n"
-            exec(code+"plt.savefig('plot.png',bbox_inches='tight',dpi=300)")
+            exec(code+"plt.savefig('plot.png',bbox_inches='tight')")
             response = await send_txtimg(group_id,img=f'{local}/plot.png')
         else:
             response = await send_txtimg(group_id,txt=f'结果为{result}')
@@ -281,8 +283,10 @@ async def calculus(group_id,msg,det,latex):
                 arg = msg.split(',')
                 arg[-1] = arg[-1].replace('inf','oo')
                 if arg[-1][-1] == '+' or arg[-1][-1] == '-':
+                    expr = sp.latex(sp.Limit(*arg[:-1],arg[-1][:-1],dir=arg[-1][-1]))
                     result = sp.Limit(*arg[:-1],arg[-1][:-1],dir=arg[-1][-1]).doit()
                 else:
+                    expr = sp.latex(sp.Limit(*arg))
                     result = sp.Limit(*arg).doit()
             case '求导': #input format: expr,var,order 输入格式为 表达式,变量=值,次数
                 arg = msg.split(',')
@@ -290,24 +294,28 @@ async def calculus(group_id,msg,det,latex):
                     arg[1] = arg[1].replace('inf','oo').split('=')
                     value = {arg[1][0]:arg[1][1]}
                     arg[1] = arg[1][0]
+                    expr = r'\left.' + sp.latex(sp.Derivative(*arg)) + r'\right|_{' + arg[1] + '=' + value[arg[1]] + r'}'
                     result = sp.Derivative(*arg).doit().subs(value)
                 else:
+                    expr = sp.latex(sp.Derivative(*arg))
                     result = sp.Derivative(*arg).doit()
             case '积分':
                 arg = msg.split(',')
                 if len(arg) == 2: #input format: expr,var 输入格式为 表达式,变量
+                    expr = sp.latex(sp.Integral(arg[0],sp.Symbol(arg[1]))).replace('int',r'int\ ')
                     result = sp.Integral(arg[0],sp.Symbol(arg[1])).doit()
                 else: #input format: expr,var,lower_limit,upper_limit 输入格式为 表达式,变量,上界,下界
                     arg[-2] = arg[-2].replace('inf','oo')
                     arg[-1] = arg[-1].replace('inf','oo')
+                    expr = sp.latex(sp.Integral(arg[0],tuple(arg[1:]))).replace('\\limits','')
                     result = sp.Integral(arg[0],tuple(arg[1:])).doit()
             case _:
                 response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
                 return
         if latex:
             code = "plt.figure(figsize=(0.1,0.1))\nplt.clf()\nplt.axis('off')\n"
-            code += f"plt.text(0.5,0.5,r'${sp.latex(result)}$',size=20,ha='center',va='center')\n"
-            exec(code+"plt.savefig('plot.png',bbox_inches='tight',dpi=300)")
+            code += f"plt.text(0.5,0.5,r'${expr}={sp.latex(result)}$',size=20,ha='center',va='center')\n"
+            exec(code+"plt.savefig('plot.png',bbox_inches='tight')")
             response = await send_txtimg(group_id,img=f'{local}/plot.png')
         else:
             response = await send_txtimg(group_id,txt=f'结果为{result}')
@@ -337,7 +345,7 @@ async def plot(group_id,msg,det):
             exec(code)
             response = await send_txtimg(group_id,txt='图像设置重置成功')
         case '图默认设置':
-            code = "plt.rcParams['font.family'] = 'serif'\n"
+            code = "plt.rcdefaults()\nplt.rcParams['font.family'] = 'serif'\n"
             code += "plt.rcParams['font.serif'] = ['Times New Roman']\n"
             code += "plt.rcParams['mathtext.fontset'] = 'cm'"
             exec(code)
@@ -381,10 +389,43 @@ async def plot(group_id,msg,det):
                 if 'label' in msg and 'legend' not in msg:
                     code += 'plt.legend()\n'
                 print(code)
-                exec(code + "plt.savefig('plot.png',bbox_inches='tight',dpi=300)")
+                exec(code + "plt.savefig('plot.png',bbox_inches='tight')")
                 response = await send_txtimg(group_id,img=f'{local}/plot.png')
             except:
                 response = await send_txtimg(group_id,txt='图像绘制失败，请重新输入')
+
+
+async def wiki(group_id,msg):
+    """scrape the introduction of an entry from wikipedia 从维基百科获取词条简介"""
+    msg = msg.strip()
+    msg = re.sub(r'\s+',r'_',msg)
+    if re.search(r'[\u4e00-\u9fa5]',msg): #determine if the entry is in chinese 判断是否为中文词条
+        url = 'https://zh.wikipedia.org/zh-hans/' + msg
+    else:
+        url = 'https://en.wikipedia.org/wiki/' + msg
+    try:
+        page = await AsyncFetcher.get(url)
+        match page.status:
+            case 200:
+                contents = page.xpath("(//div[@class='mw-heading mw-heading2'])[1]/preceding-sibling::*[not(contains(@class, 'mw-empty-elt')) and (self::p or self::dl)] | (//div[@class='mw-heading mw-heading2'])[1]/preceding-sibling::*[self::ul or self::ol]/li").getall()
+                if not contents:
+                    contents = page.xpath("//div[@class='mw-content-ltr mw-parser-output']/*[not(contains(@class, 'mw-empty-elt')) and (self::p or self::dl)] | //div[@class='mw-content-ltr mw-parser-output']/*[self::ul or self::ol]/li").getall()
+                article = ''
+                for content in contents:
+                    texts = Selector(content).xpath("//text()[not(ancestor::sup[contains(@class, 'reference')] or ancestor::annotation)]")
+                    for text in texts:
+                        article += text.get_all_text().strip('\n')
+                    article += '\n\n'
+                response = await send_txtimg(group_id,txt=article[:-2])
+            case 404:
+                response = await send_txtimg(group_id,txt='未找到该词条(404)')
+            case 500:
+                response = await send_txtimg(group_id,txt='网站内部错误(500)')
+            case _:
+                response = await send_txtimg(group_id,txt=f'发生错误({page.status})，请重试')
+    except:
+        response = await send_txtimg(group_id,txt='获取百科出错，请重试')
+
 
 
 @app.post("/")
@@ -421,6 +462,10 @@ async def root(request: Request):
                 msg = msg.replace('计算','')
                 await calculator(data['group_id'],msg)
                 return '数值计算'
+            if '百科' in msg:
+                msg = msg.replace('百科','')
+                await wiki(data['group_id'],msg)
+                return '维基百科'
             search = re.search(r'(化简|分解|解方程|代入|展开)',msg)
             if search:
                 det = search.group()

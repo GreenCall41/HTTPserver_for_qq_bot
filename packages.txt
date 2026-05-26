@@ -4,6 +4,7 @@ httpx		0.28.1
 matplotlib	3.10.9
 numpy		2.4.4
 requests	2.33.1
+scrapling	0.4.8
 socksio		1.0.0
 sympy		1.14.0
 urllib3		2.6.3
