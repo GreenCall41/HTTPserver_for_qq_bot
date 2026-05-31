@@ -2,7 +2,9 @@ asyncio		4.0.0
 fastapi		0.136.0
 httpx		0.28.1
 matplotlib	3.10.9
+mplfinance	0.12.10b0
 numpy		2.4.4
+pandas		3.0.3
 requests	2.33.1
 scrapling	0.4.8
 socksio		1.0.0
