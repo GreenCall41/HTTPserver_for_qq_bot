@@ -5,6 +5,8 @@ from fastapi import FastAPI, Request
 import matplotlib.pyplot as plt
 from scrapling.fetchers import AsyncFetcher
 from scrapling.parser import Selector
+import mplfinance as mpf
+import pandas as pd
 
 app = FastAPI()
 url = "http://127.0.0.1:3000/" #server port 服务器接口默认3000
@@ -67,6 +69,10 @@ with open('self.json','r') as file:
 #load local server path in the form 'file://[absolute path]' 加载本地服务端路径 格式为'file://[绝对路径]'
 with open('path.json','r') as file:
     local = json.load(file)
+
+#load api access key for stock data 加载股票数据的api key
+with open('stockapi.json','r') as file:
+    stock_key = json.load(file)
 
 async def send_txtimg(group_id, txt='', img=''):
     """send text in str or image in url or file path 发送文字或图片 图片为链接或文件路径格式"""
@@ -427,6 +433,79 @@ async def wiki(group_id,msg):
         response = await send_txtimg(group_id,txt='获取百科出错，请重试')
 
 
+async def stock(group_id, msg):
+    """provide data on stock prices and volumes 提供股票价格和交易量的数据"""
+    global stock_key
+    msg = msg.strip()
+    arg = msg.split(',')
+    if '沪' in arg[0]:
+        arg[0] = re.sub(r'[^0-9]+([0-9]+)',r'\1.XSHG',arg[0])
+    if '深' in arg[0]:
+        arg[0] = re.sub(r'[^0-9]+([0-9]+)',r'\1.XSHE',arg[0])
+    if '港' in arg[0]:
+        arg[0] = re.sub(r'[^0-9]+([0-9]+)',r'\1.HK',arg[0])
+    if len(arg) == 1:
+        querystring = {
+            'access_key':stock_key,
+            'symbols':arg[0]
+        }
+    elif len(arg) == 2: #input format: symbols, limit 输入格式：股票编码，天数
+        querystring = {
+            'access_key':stock_key,
+            'symbols':arg[0],
+            'limit':arg[1]
+        }
+    else: #input format: symbols, date_from, date_to 输入格式：股票编码，起始日期，终止日期
+        querystring = {
+            'access_key':stock_key,
+            'symbols':arg[0],
+            'date_from':arg[1],
+            'date_to':arg[2]
+        }
+    url = 'https://api.marketstack.com/v2/eod'
+    headers = {"Accept": "application/json"}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            apidata = await client.get(url,headers=headers,params=querystring)
+            if apidata.status_code == 200:
+                apijson = apidata.json()
+                data = {
+                    'Open':[data['open'] for data in apijson['data']],
+                    'High':[data['high'] for data in apijson['data']],
+                    'Low':[data['low'] for data in apijson['data']],
+                    'Close':[data['close'] for data in apijson['data']],
+                    'Volume':[data['volume'] for data in apijson['data']],
+                }
+                dates = pd.to_datetime([data['date'][:10] for data in apijson['data']])
+                df = pd.DataFrame(data, index=dates)
+                df = df[::-1]
+                custom_style = mpf.make_mpf_style(
+                    base_mpf_style='charles',     # Classic green/red color scheme 经典红绿图表
+                    gridstyle='--',               # Dashed grid lines 虚线网格线
+                    y_on_right=False              # Moves the price Y-axis to the left side 将价格y轴置于左侧
+                )
+                mpf.plot(
+                    df, 
+                    type='candle',                # Use 'candle' or 'ohlc' bars 用k线
+                    volume=True,                  # Adds the volume bar chart panel below 添加交易量
+                    mav=(3),                      # Optional: adds a 3-day Moving Average line 添加3日均线
+                    style=custom_style,           # Applies our visual style settings 应用custom_style设置
+                    title=f'{apijson['data'][0]['name']} ({apijson['data'][0]['exchange']})',
+                    ylabel=f'Price ({apijson['data'][0]['price_currency']})',
+                    ylabel_lower='Volume',         # Label for the volume sub-plot 标注交易量y轴
+                    savefig={
+                        'fname': 'stock.png', # Target file name 储存文件名
+                        'dpi': 300,                    # Resolution (300 DPI is ideal for print/reports) 分辨率
+                        'bbox_inches': 'tight',        # Prevents clipped axis labels 避免轴标注被裁切
+                        'pad_inches': 0.1              # Padding around the outer edge 外围留边
+                    }
+                )
+                response = await send_txtimg(group_id,img=f'{local}/stock.png')
+            else:
+                response = await send_txtimg(group_id,txt='股票数据失败，请重新输入')
+        except (httpx.ConnectTimeout, httpx.ReadTimeout):
+            response = await send_txtimg(group_id,txt='连接/读取超时(>10s)，请重试')
+
 
 @app.post("/")
 async def root(request: Request):
@@ -466,6 +545,10 @@ async def root(request: Request):
                 msg = msg.replace('百科','')
                 await wiki(data['group_id'],msg)
                 return '维基百科'
+            if '股票' in msg:
+                msg = msg.replace('股票','')
+                await stock(data['group_id'],msg)
+                return '股票'
             search = re.search(r'(化简|分解|解方程|代入|展开)',msg)
             if search:
                 det = search.group()

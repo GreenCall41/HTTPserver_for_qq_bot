@@ -1,8 +1,8 @@
 # Intro 简介
 
-This project is a HTTP server code for qq bots based on [llonebot](https://luckylillia.com/). Currently the server can scrapy pony images, do numerical calculations, solve simple math problems, and make plots depending on what key words a user gives to the bot. More utilities and functions are to be developed. In theory, the code can be slightly modified to support other bots that can communicate with http protocols such as [NapCat](https://napneko.github.io/).
+This project is a HTTP server code for qq bots based on [llonebot](https://luckylillia.com/). Currently the server can scrapy pony images, do numerical calculations, solve simple math problems, make plots, search for wikipedia articles, and provide stock data depending on what key words a user gives to the bot. More utilities and functions are to be developed. In theory, the code can be slightly modified to support other bots that can communicate with http protocols such as [NapCat](https://napneko.github.io/).
 
-此项目为基于[llonebot](https://luckylillia.com/)的qq机器人服务端代码。目前该服务端可以根据用户提供的关键词进行小马图片抓取、数值计算、求解简单的数学问题以及绘制图像。更多的功能将在后期相继开发。理论上来说，只需要通过一些简单的修改就可以让此代码适配其他可以用http协议交互的机器人（例如[NapCat](https://napneko.github.io/)）。
+此项目为基于[llonebot](https://luckylillia.com/)的qq机器人服务端代码。目前该服务端可以根据用户提供的关键词抓取小马图片、进行数值计算、求解简单的数学问题、绘制图像、检索维基百科词条以及提供股票数据。更多的功能将在后期相继开发。理论上来说，只需要通过一些简单的修改就可以让此代码适配其他可以用http协议交互的机器人（例如[NapCat](https://napneko.github.io/)）。
 
 # Environment 运行环境
 
@@ -20,7 +20,9 @@ Everything is written in python 3.12. You can refer to `packages.txt` to find ou
    添加`self.json`文件并在里面以python字符串的形式写明机器人的qq号。
 4. Add `path.json` with the server path specified as a python string as `"file:\\[absolute path]"` in it.
    添加`path.json`文件并在里面以python字符串的形式写明服务端所在路径，格式为`"file:\\[绝对路径]"`。
-5. Run both the llbot and the server code.
+5. Add `stockapi.json` with the api key for stock data specified as a python string in it. Free api keys can be obtained from [marketstack](https://marketstack.com/).
+   添加`stockapi.json`文件并在里面以python字符串形式写明股票数据的api key。免费的api key可以从[marketstack](https://marketstack.com/)获取。
+6. Run both the llbot and the server code.
    同时运行llbot机器人和服务端代码。
 
 # More info 更多信息
