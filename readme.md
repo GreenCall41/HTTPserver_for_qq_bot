@@ -6,9 +6,9 @@ This project is a HTTP server code for qq bots based on [llonebot](https://lucky
 
 # Environment 运行环境
 
-Everything is written in python 3.12. You can refer to `packages.txt` to find out all the python packages required for this project. In theory, just make sure all the packages listed are up-to-date and the code should work fine.
+Everything is written in python 3.12. You can refer to `packages.txt` to find out all the python packages required for this project and install them via the command `pip install -r requirements.txt`. In theory, just make sure all the packages listed are up-to-date and the code should work fine.
 
-所有代码均使用python 3.12编写。可以查看`packages.txt`以获悉此项目需要安装的所有python包。理论上来说，只要文件里列举的包都是最新版本，项目代码就可以正常运行。
+所有代码均使用python 3.12编写。可以查看`packages.txt`以获悉此项目需要的所有python包并通过`pip install -r requirements.txt`命令进行安装。理论上来说，只要文件里列举的包都是最新版本，项目代码就可以正常运行。
 
 # User's guide 项目安装步骤
 
@@ -24,6 +24,8 @@ Everything is written in python 3.12. You can refer to `packages.txt` to find ou
    添加`stockapi.json`文件并在里面以python字符串形式写明股票数据的api key。免费的api key可以从[marketstack](https://marketstack.com/)获取。
 6. Run both the llbot and the server code.
    同时运行llbot机器人和服务端代码。
+7. If the Matplotlib library complains that no latex renderer could be found, manually install one based on the operating system (e.g., [TeX Live](https://www.tug.org/texlive/) on Linux, [MacTex](https://www.tug.org/mactex/) on MacOS, or [MiKTeX](https://miktex.org/) on Windows) or change the settings of the `plt.rcParams.update()` function in `HTTPserver.py`.
+   如果Matplotlib库未能找到相应的latex渲染器，可根据所使用的操作系统手动安装（例如Linux的[TeX Live](https://www.tug.org/texlive/)，MacOS的[MacTex](https://www.tug.org/mactex/)，或是Windows的[MiKTeX](https://miktex.org/)）或更改`HTTPserver.py`中`plt.rcParams.update()`函数的设置。
 
 # More info 更多信息
 

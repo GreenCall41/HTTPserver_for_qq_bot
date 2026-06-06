@@ -1,12 +1,15 @@
 import uvicorn, requests, json, random, httpx, asyncio, urllib, re
 import numpy as np
 import sympy as sp
+from sympy.series.formal import fps
 from fastapi import FastAPI, Request
 import matplotlib.pyplot as plt
 from scrapling.fetchers import AsyncFetcher
 from scrapling.parser import Selector
 import mplfinance as mpf
 import pandas as pd
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 
 app = FastAPI()
 url = "http://127.0.0.1:3000/" #server port 服务器接口默认3000
@@ -260,7 +263,10 @@ async def algebra(group_id,msg,det,latex):
                 else: #for a single single-variable equation as equation1, var1 单个单变量方程 方程1,变量1
                     arg = msg.split(',')
                     arg[0] = re.sub(r'=(.*)',r'-(\1)',arg[0])
-                result = sp.solve(*arg,dict=True)
+                loop = asyncio.get_running_loop()
+                task = partial(sp.solve,*arg,dict=True)
+                async with asyncio.timeout(15.0):
+                    result = await loop.run_in_executor(process_pool,task)
             case '代入': #input format: expression,var1=val1,var2=val2,...  输入格式必须为 表达式,变量1=值1,变量2=值2,...
                 arg = msg.split(',')
                 value = {n.split('=')[0]:n.split('=')[1] for n in arg[1:]}
@@ -285,7 +291,7 @@ async def calculus(group_id,msg,det,latex):
     print(msg)
     try:
         match det:
-            case '极限': #input format: expr,var,val+/-  输入格式为 表达式,变量,值[+/-]
+            case '极限': #input format: expr,var,val[+/-]  输入格式为 表达式,变量,值[+/-]
                 arg = msg.split(',')
                 arg[-1] = arg[-1].replace('inf','oo')
                 if arg[-1][-1] == '+' or arg[-1][-1] == '-':
@@ -294,27 +300,115 @@ async def calculus(group_id,msg,det,latex):
                 else:
                     expr = sp.latex(sp.Limit(*arg))
                     result = sp.Limit(*arg).doit()
-            case '求导': #input format: expr,var,order 输入格式为 表达式,变量=值,次数
+            case '求导': #input format: expr,var1[=val1][,order1][,var2[=val2][,order2],...]
+                #输入格式为 表达式,变量1[=值1][,次数1][,变量2[=值2][,次数2],...]
                 arg = msg.split(',')
-                if '=' in arg[1]:
-                    arg[1] = arg[1].replace('inf','oo').split('=')
-                    value = {arg[1][0]:arg[1][1]}
-                    arg[1] = arg[1][0]
-                    expr = r'\left.' + sp.latex(sp.Derivative(*arg)) + r'\right|_{' + arg[1] + '=' + value[arg[1]] + r'}'
+                if '=' in msg:
+                    value = {}
+                    for i in range(len(arg)-1):
+                        if '=' in arg[i+1]:
+                            arg[i+1] = arg[i+1].replace('inf','oo').split('=')
+                            value[arg[i+1][0]] = arg[i+1][1]
+                            arg[i+1] = arg[i+1][0]
+                    expr = r'\left.' + sp.latex(sp.Derivative(*arg)) + r'\right|_{' + ','.join([u+'='+v for u,v in value.items()]) + r'}'
                     result = sp.Derivative(*arg).doit().subs(value)
                 else:
                     expr = sp.latex(sp.Derivative(*arg))
                     result = sp.Derivative(*arg).doit()
             case '积分':
                 arg = msg.split(',')
-                if len(arg) == 2: #input format: expr,var 输入格式为 表达式,变量
-                    expr = sp.latex(sp.Integral(arg[0],sp.Symbol(arg[1]))).replace('int',r'int\ ')
-                    result = sp.Integral(arg[0],sp.Symbol(arg[1])).doit()
-                else: #input format: expr,var,lower_limit,upper_limit 输入格式为 表达式,变量,上界,下界
-                    arg[-2] = arg[-2].replace('inf','oo')
-                    arg[-1] = arg[-1].replace('inf','oo')
-                    expr = sp.latex(sp.Integral(arg[0],tuple(arg[1:]))).replace('\\limits','')
-                    result = sp.Integral(arg[0],tuple(arg[1:])).doit()
+                if not re.search(r'([0-9]|pi|E|I)',','.join(arg[1:])): #input format: expr,var1[,var2,...] 输入格式为 表达式,变量1[,变量2,...]
+                    var = [sp.Symbol(arg[i+1]) for i in range(len(arg)-1)]
+                    expr = sp.latex(sp.Integral(arg[0],*var)).replace('int',r'int\ ')
+                    result = sp.Integral(arg[0],*var).doit()
+                else: #input format: expr,var1,lower_limit1,upper_limit1[,var2,lower_limit2,upper_limit2,...] 
+                    #输入格式为 表达式,变量1,上界1,下界1[,变量2,上界2,下界2,...]
+                    var = [(arg[3*i+1],arg[3*i+2].replace('inf','oo'),arg[3*i+3].replace('inf','oo')) for i in range(len(arg[1:])//3)]
+                    expr = sp.latex(sp.Integral(arg[0],*var)).replace('\\limits','')
+                    result = sp.Integral(arg[0],*var).doit()
+            case '求和': #input format: expr,var,lower_limit,upper_limit 输入格式为 表达式,变量,下限,上限
+                arg = msg.split(',')
+                arg[-2] = arg[-2].replace('inf','oo')
+                arg[-1] = arg[-1].replace('inf','oo')
+                expr = sp.latex(sp.Sum(arg[0],tuple(arg[1:])))
+                result = sp.Sum(arg[0],tuple(arg[1:])).doit()
+            case '泰勒': #input format: expr,var,around_point,num_of_terms 输入格式为 表达式,变量,展开原点,项数
+                arg = msg.split(',')
+                expr = sp.latex(arg[0])
+                if arg[-1] == 'inf' or arg[-1] == 'oo':
+                    result = fps(sp.simplify(arg[0]),*arg[1:-1])
+                else:
+                    result = sp.simplify(arg[0]).series(sp.Symbol(arg[1]),*arg[2:])
+            case '微分方程': #input format: equation[,initial_condition1,initial_condition2,...] 输入格式为 方程[,初始条件1,初始条件2,...] 
+                def todiff(expr):
+                    """convert dx expression into sympy diff expression 将dx表达式转换为sympy的diff表达式"""
+                    part = expr.split('/')
+                    dx = part[1].split('d')[1:]
+                    for i in range(len(dx)):
+                        if re.search(r'[0-9]',dx[i]):
+                            dx[i] = re.sub(r'([a-z]+)([0-9]+)',r'.diff(\1,\2)',dx[i])
+                        else:
+                            dx[i] = f'.diff({dx[i]})'
+                    expr = part[0].strip() + ''.join(dx)
+                    return expr
+                if re.search(r'\([a-z],[a-z,]+\)',msg): #pde 偏微分方程
+                    msg = re.sub(r'[a-z]+\([a-z,]+\)\s?/\s?(d[a-z]+[0-9]*)+',lambda m: todiff(m.group()),msg)
+                    msg = msg.split('=')
+                    eq = sp.Eq(sp.simplify(msg[0]),sp.simplify(msg[1]))
+                    loop = asyncio.get_running_loop()
+                    async with asyncio.timeout(15.0):
+                        result = await loop.run_in_executor(process_pool,sp.pdsolve,eq)
+                else: #ode 常微分方程
+                    arg = msg.split(',')
+                    var = re.search(r'\([a-z]+\)',arg[0]).group().strip('()')
+                    arg[0] = re.sub(r"([a-z]+)'\(([a-z]+)\)",r'\1(\2).diff(\2)',arg[0]) # y'(x) -> y(x).diff(x)
+                    arg[0] = re.sub(r"([a-z]+)''\(([a-z]+)\)",r'\1(\2).diff(\2,2)',arg[0]) # y''(x) -> y(x).diff(x,2)
+                    arg[0] = re.sub(r"([a-z]+)'''\(([a-z]+)\)",r'\1(\2).diff(\2,3)',arg[0]) # y'''(x) -> y(x).diff(x,3)
+                    arg[0] = re.sub(r'[a-z]+\([a-z,]+\)\s?/\s?(d[a-z]+[0-9]*)+',lambda m: todiff(m.group()),arg[0])
+                    arg[0] = arg[0].split('=')
+                    eq = sp.Eq(sp.simplify(arg[0][0]),sp.simplify(arg[0][1]))
+                    if len(arg) == 1: #if no initial condition is provided 如果没有提供初始条件
+                        loop = asyncio.get_running_loop()
+                        async with asyncio.timeout(15.0):
+                            result = await loop.run_in_executor(process_pool,sp.dsolve,eq)
+                    else: #if initial conditions are provided 如果提供初始条件
+                        def icstodiff(ics,var):
+                            """convert dx initial condition into sympy diff initial condition 将dx初始条件转换为sympy的diff初始条件"""
+                            part = ics.split('/')
+                            dx = part[1].split('d')[1:]
+                            for i in range(len(dx)):
+                                if re.search(r'[0-9]',dx[i]):
+                                    dx[i] = re.sub(r'([a-z]+)([0-9]+)',r'.diff(\1,\2)',dx[i])
+                                else:
+                                    dx[i] = f'.diff({dx[i]})'
+                            val = re.search(r'\([A-Za-z0-9]\)',part[0]).group().strip('()')
+                            part[0] = re.sub(r'\([A-Za-z0-9]\)',f'({var})',part[0])
+                            ics = part[0].strip() + ''.join(dx) + '.subs(' + var + ',' + val + ')'
+                            return ics
+                        conditions = {}
+                        for i in range(len(arg)-1):
+                            arg[i+1] = re.sub(r"([a-z]+)'\(([A-Za-z0-9]+)\)",f'\\1({var}).diff({var}).subs({var},\\2)',arg[i+1])
+                            arg[i+1] = re.sub(r"([a-z]+)''\(([A-Za-z0-9]+)\)",f'\\1({var}).diff({var},2).subs({var},\\2)',arg[i+1])
+                            arg[i+1] = re.sub(r"([a-z]+)'''\(([A-Za-z0-9]+)\)",f'\\1({var}).diff({var},3).subs({var},\\2)',arg[i+1])
+                            arg[i+1] = re.sub(r'[a-z]+\([A-Za-z0-9]+\)\s?/\s?(d[a-z]+[0-9]*)+',lambda m: icstodiff(m.group(),var),arg[i+1])
+                            arg[i+1] = arg[i+1].split('=')
+                            conditions[sp.simplify(arg[i+1][0])] = sp.simplify(arg[i+1][1])
+                        loop = asyncio.get_running_loop()
+                        task = partial(sp.dsolve,eq,ics=conditions)
+                        async with asyncio.timeout(15.0):
+                            result = await loop.run_in_executor(process_pool,task)
+                if latex:
+                    code = "plt.figure(figsize=(0.1,0.1))\nplt.clf()\nplt.axis('off')\n"
+                    code += f"plt.text(0.5,0.5,r'${sp.latex(eq)}$',size=20,ha='center',va='center')\n"
+                    exec(code+"plt.savefig('plot.png',bbox_inches='tight')")
+                    response = await send_txtimg(group_id,txt='方程为',img=f'{local}/plot.png')
+                    code = "plt.clf()\nplt.axis('off')\n"
+                    code += f"plt.text(0.5,0.5,r'${sp.latex(result)}$',size=20,ha='center',va='center')\n"
+                    exec(code+"plt.savefig('plot.png',bbox_inches='tight')")
+                    response = await send_txtimg(group_id,txt='解为',img=f'{local}/plot.png')
+                else:
+                    response = await send_txtimg(group_id,txt=f'方程为{eq}，解为{result}')
+                return
             case _:
                 response = await send_txtimg(group_id,txt='关键词错误，请重新输入')
                 return
@@ -325,6 +419,10 @@ async def calculus(group_id,msg,det,latex):
             response = await send_txtimg(group_id,img=f'{local}/plot.png')
         else:
             response = await send_txtimg(group_id,txt=f'结果为{result}')
+    except NotImplementedError:
+        response = await send_txtimg(group_id,txt='无法求解')
+    except TimeoutError:
+        response = await send_txtimg(group_id,txt='求解超时')
     except:
         response = await send_txtimg(group_id,txt='运算错误，请重新输入')
 
@@ -347,14 +445,21 @@ async def plot(group_id,msg,det):
             except:
                 response = await send_txtimg(group_id,txt='图像设置失败，请重新输入')
         case '图设置重置':
-            code = 'plt.rcdefaults()'
-            exec(code)
+            plt.rcdefaults()
+            plt.rcParams.update({
+                "text.usetex": True,
+                "text.latex.preamble": r"\usepackage{amsmath}"
+            })
             response = await send_txtimg(group_id,txt='图像设置重置成功')
         case '图默认设置':
-            code = "plt.rcdefaults()\nplt.rcParams['font.family'] = 'serif'\n"
-            code += "plt.rcParams['font.serif'] = ['Times New Roman']\n"
-            code += "plt.rcParams['mathtext.fontset'] = 'cm'"
-            exec(code)
+            plt.rcdefaults()
+            plt.rcParams['font.family'] = 'serif'
+            plt.rcParams['font.serif'] = ['Times New Roman']
+            plt.rcParams['mathtext.fontset'] = 'cm'
+            plt.rcParams.update({
+                "text.usetex": True,
+                "text.latex.preamble": r"\usepackage{amsmath}"
+            })
             response = await send_txtimg(group_id,txt='图像默认设置成功')
         case _:
             try:
@@ -502,9 +607,11 @@ async def stock(group_id, msg):
                 )
                 response = await send_txtimg(group_id,img=f'{local}/stock.png')
             else:
-                response = await send_txtimg(group_id,txt='股票数据失败，请重新输入')
+                response = await send_txtimg(group_id,txt='获取股票数据失败，请重新输入')
         except (httpx.ConnectTimeout, httpx.ReadTimeout):
             response = await send_txtimg(group_id,txt='连接/读取超时(>10s)，请重试')
+        except:
+            response = await send_txtimg(group_id,txt='获取股票数据失败，请重新输入')
 
 
 @app.post("/")
@@ -542,7 +649,7 @@ async def root(request: Request):
                 await calculator(data['group_id'],msg)
                 return '数值计算'
             if '百科' in msg:
-                msg = msg.replace('百科','')
+                msg = msg.replace('百科','',1)
                 await wiki(data['group_id'],msg)
                 return '维基百科'
             if '股票' in msg:
@@ -555,7 +662,7 @@ async def root(request: Request):
                 msg = msg.replace(det,'')
                 await algebra(data['group_id'],msg,det,latex)
                 return '代数运算'
-            search = re.search(r'(极限|求导|积分)',msg)
+            search = re.search(r'(极限|求导|积分|求和|泰勒|微分方程)',msg)
             if search:
                 det = search.group()
                 msg = msg.replace(det,'')
@@ -566,11 +673,17 @@ async def root(request: Request):
 
 
 if __name__ == "__main__":
+    plt.rcParams.update({
+        "text.usetex": True,
+        "text.latex.preamble": r"\usepackage{amsmath}"
+    })
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Times New Roman']
     plt.rcParams['mathtext.fontset'] = 'cm'
+    process_pool = ProcessPoolExecutor(max_workers=4)
     try:
         uvicorn.run(app, port=3090) #post(webhook) port 机器人接受到消息后用于推送事件的接口
     finally:
         with open('data.json', 'w', encoding='utf-8') as f: #save total number of images when closing 程序关闭时保存图片数
             json.dump(pages, f, indent=4)
+        process_pool.shutdown(wait=False, cancel_futures=True)
