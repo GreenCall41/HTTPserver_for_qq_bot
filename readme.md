@@ -6,9 +6,9 @@ This project is a HTTP server code for qq bots based on [llonebot](https://lucky
 
 # Environment 运行环境
 
-Everything is written in python 3.12. You can refer to `packages.txt` to find out all the python packages required for this project and install them via the command `pip install -r requirements.txt`. In theory, just make sure all the packages listed are up-to-date and the code should work fine.
+Everything is written in python 3.12. You can refer to `packages.txt` to find out all the python packages required for this project and install them via the command `pip install -r packages.txt`. In theory, just make sure all the packages listed are up-to-date and the code should work fine.
 
-所有代码均使用python 3.12编写。可以查看`packages.txt`以获悉此项目需要的所有python包并通过`pip install -r requirements.txt`命令进行安装。理论上来说，只要文件里列举的包都是最新版本，项目代码就可以正常运行。
+所有代码均使用python 3.12编写。可以查看`packages.txt`以获悉此项目需要的所有python包并通过`pip install -r packages.txt`命令进行安装。理论上来说，只要文件里列举的包都是最新版本，项目代码就可以正常运行。
 
 # User's guide 项目安装步骤
 
